@@ -1,0 +1,7 @@
+typer[all]
+openai
+notion-client
+atlassian-python-api
+# faiss-cpu -- to handle late
+chromadb
+pyyaml

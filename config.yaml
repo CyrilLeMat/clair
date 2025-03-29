@@ -1,0 +1,31 @@
+# Clair Configuration File
+
+notion:
+  enabled: true
+  integration_token: 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
+
+confluence:
+  enabled: false
+  base_url: "https://your-domain.atlassian.net"
+  email: "your-email@example.com"
+  api_token: "YOUR_CONFLUENCE_API_TOKEN"
+  spaces:
+    - "DOC"
+    - "ENG"
+
+openai:
+  model: "gpt-4"
+  api_key: "YOUR_OPENAI_API_KEY"
+
+google:
+  enabled: true
+  GEMINI_API_KEY: AIzaSyDxUIdy9lNvGNusiVo36BrXIFTxtuK-cTM
+
+auditor:
+  outdated_threshold_days: 90
+  contradiction_similarity_threshold: 0.85
+  verbosity: true
+
+report:
+  output_dir: "reports"
+  format: "markdown"

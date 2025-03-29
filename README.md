@@ -15,7 +15,12 @@ It scans your **Notion and Confluence** documentation (and soon Slack and others
 Unlike helpful AI assistants, Clair takes an **adversarial** approach—seeking flaws, not answers.
 
 ---
+## 🛠️ How to call clair
 
+You can run Clair's audit functionality using the CLI:
+
+
+---
 
 
 ## 🔍 Features (MVP)
@@ -34,7 +39,7 @@ Unlike helpful AI assistants, Clair takes an **adversarial** approach—seeking 
 - [`notion-client`](https://github.com/ramnes/notion-sdk-py) for Notion integration
 - [`atlassian-python-api`](https://github.com/atlassian-api/atlassian-python-api) for Confluence support
 - [`openai`](https://github.com/openai/openai-python) or [`llama-index`](https://github.com/jerryjliu/llama_index)
-- `faiss` or `chromadb` for vector similarity
+- `chromadb` for vector similarity
 - Optional: Slack integration
 
 
