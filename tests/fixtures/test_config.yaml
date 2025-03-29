@@ -1,0 +1,28 @@
+# Test Configuration File
+
+notion:
+  enabled: true
+  integration_token: "test-token"
+  database_ids:
+    - "test-database-id"
+
+confluence:
+  enabled: false
+  base_url: "https://test.atlassian.net"
+  email: "test@example.com"
+  api_token: "test-token"
+  spaces:
+    - "TEST"
+
+openai:
+  model: "gpt-4"
+  api_key: "test-key"
+
+auditor:
+  outdated_threshold_days: 30
+  contradiction_similarity_threshold: 0.85
+  verbosity: true
+
+report:
+  output_dir: "test_reports"
+  format: "markdown" 

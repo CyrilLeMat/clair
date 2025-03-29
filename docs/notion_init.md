@@ -26,8 +26,6 @@ To enable Clair to audit your Notion workspace, you need to generate a Notion AP
 notion:
   enabled: true
   integration_token: "YOUR_NOTION_TOKEN"
-  database_ids:
-    - "your-database-id"
 ```
 
 ---

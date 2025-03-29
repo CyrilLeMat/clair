@@ -5,3 +5,7 @@ atlassian-python-api
 # faiss-cpu -- to handle late
 chromadb
 pyyaml
+fastapi
+uvicorn
+pydantic
+python-multipart
