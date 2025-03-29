@@ -6,7 +6,16 @@ from notion_client import Client
 import json
 import logging
 import yaml
+import requests
+
+import asyncio
+import aiohttp
+import async_timeout
+from aiohttp import ClientSession
+
+
 logger = logging.getLogger(__name__)
+
 
 def extract_and_analyze():
 
@@ -14,30 +23,18 @@ def extract_and_analyze():
         config = yaml.safe_load(f)
 
     notion_config = config["notion"]
-    notion = Client(auth=notion_config["integration_token"])
-    logger.info("Notion client initialized") 
-    content_dict = extract(notion, config["notion"])
+    
+    content_dict = extract(notion_config, config["notion"])
     logger.info(f"Extracted {len(content_dict)} pages from Notion")
    
     with open("content_dict.json", "w") as json_file:
         json.dump(content_dict, json_file, indent=4)
 
-    # Process each page and add to ChromaDB
-    
-
-        # metadatas = [{**metadata, "chunk_index": i, "chunk_count": len(chunks)} for i in range(len(chunks))]
-        
-    # collection.add(
-    #     documents=chunks,
-    #     ids=ids,
-    #     metadatas=metadatas
-    # )
-    
-    # print(f"Added {len(chunks)} chunks from '{page_name}' to ChromaDB")
-
 
 def extract(notion: Client, notion_config: dict):
     # Get list of all pages in workspace
+    notion = Client(auth=notion_config["integration_token"])
+    logger.info("Notion client initialized") 
     pages = get_all_pages(notion)
     with open("pages.json", "w") as json_file:
         json.dump(pages, json_file, indent=4)
@@ -53,22 +50,19 @@ def extract(notion: Client, notion_config: dict):
         if page_title:
             page_name = extract_rich_text(page_title)
         else:
-            page_name = f"Untitled_{page_id[:8]}"
+            continue
         content_dict[page_id] = {
-            'page_title': page_title,
+            # 'page_title': page_title,
             'page_name': page_name,
             "url": f"https://notion.so/{page_id.replace('-', '')}",
         }
 
-    with open("content_dict_basis.json", "w") as json_file:
-        json.dump(content_dict, json_file, indent=4)
+    logger.info(f"Found {len(content_dict)} distint pages in Notion workspace")
     
     # get content
     print("get page contents")
-    for page_id in content_dict:
-        content_dict[page_id]["blocks"] = get_page_content(page_id, notion)
-    with open("content_dict_content.json", "w") as json_file:
-        json.dump(content_dict, json_file, indent=4)
+    content_dict = fetch_pages_async(content_dict, notion_config["integration_token"])
+
 
     # get blocks
     print("get blocks")
@@ -87,26 +81,6 @@ def extract(notion: Client, notion_config: dict):
 
     return content_dict
     
-
-def get_page_content(page_id, notion):
-    """
-    Gets the content of a specific page.
-    """
-    blocks = []
-    
-    # Get all blocks in the page
-    response = notion.blocks.children.list(block_id=page_id, page_size=100)
-    blocks.extend(response["results"])
-    
-    # Handle pagination if there are more blocks
-    while response["has_more"]:
-        response = notion.blocks.children.list(
-            block_id=page_id,
-            start_cursor=response["next_cursor"],
-            page_size=100
-        )
-        blocks.extend(response["results"])    
-    return blocks
 
 
 def extract_text_content(blocks, level=0):
@@ -250,21 +224,6 @@ def chunk_text(text, chunk_size=1000, overlap=100):
     
     return chunks
 
-
-
-    # # Process nested blocks
-    # blocks_with_children = []
-    # for block in blocks:
-    #     if block.get("has_children", False):
-    #         blocks_with_children.append(block["id"])
-    
-    # for block_id in blocks_with_children:
-    #     child_blocks = get_page_content(block_id)
-    #     for i, block in enumerate(blocks):
-    #         if block["id"] == block_id:
-    #             blocks[i]["children"] = child_blocks
-    #             break
-
     return page_contents
 
 
@@ -300,3 +259,109 @@ def get_all_pages(notion: Client):
         pages.extend(response["results"])
     
     return pages
+
+
+async def get_page_content_async(page_id, notion_token, semaphore, timeout=60):
+    """
+    Asynchronously gets content of a specific page using aiohttp.
+    """
+    blocks = []
+    
+    # Notion API endpoint for blocks
+    url = f"https://api.notion.com/v1/blocks/{page_id}/children"
+    headers = {
+        "Authorization": f"Bearer {notion_token}",
+        "Notion-Version": "2022-06-28",  # Use the appropriate version
+        "Content-Type": "application/json"
+    }
+    
+    params = {
+        "page_size": 100
+    }
+    
+    async with semaphore:
+        try:
+            async with ClientSession() as session:
+                has_more = True
+                while has_more:
+                    async with async_timeout.timeout(timeout):
+                        async with session.get(url, headers=headers, params=params) as response:
+                            if response.status != 200:
+                                raise Exception(f"API error: {response.status}")
+                            
+                            data = await response.json()
+                            blocks.extend(data["results"])
+                            
+                            has_more = data.get("has_more", False)
+                            if has_more:
+                                params["start_cursor"] = data["next_cursor"]
+                            else:
+                                break
+            
+            return blocks
+        except Exception as e:
+            print(f"Error fetching content for page {page_id}: {str(e)}")
+            return []
+
+async def fetch_all_pages_async(content_dict, notion_token, concurrency_limit):
+    """
+    Asynchronously fetches all page content with rate limiting.
+    
+    Args:
+        content_dict: Dictionary mapping page IDs to page data
+        notion_token: Notion API token
+        concurrency_limit: Maximum number of concurrent requests
+    
+    Returns:
+        Updated content_dict with blocks added
+    """
+    # Create a semaphore to limit concurrency
+    semaphore = asyncio.Semaphore(concurrency_limit)
+    
+    # Get list of page IDs
+    page_ids = list(content_dict.keys())
+    
+    # Create tasks for all pages
+    tasks = [
+        get_page_content_async(page_id, notion_token, semaphore)
+        for page_id in page_ids
+    ]
+    
+    # Run all tasks and collect results
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Update content dictionary with results
+    for page_id, result in zip(page_ids, results):
+        if isinstance(result, Exception):
+            print(f"Error for page {page_id}: {str(result)}")
+        else:
+            content_dict[page_id]["blocks"] = result
+    
+    return content_dict
+
+def fetch_pages_async(content_dict, notion_token, concurrency_limit=10) -> dict:
+    """Wrapper to run the async function"""
+    return asyncio.run(fetch_all_pages_async(content_dict, notion_token, concurrency_limit))
+
+def call_gemini(text):
+    """
+    Calls the Gemini API with the given text.
+    """
+    
+
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+    headers = {
+        "Content-Type": "application/json"
+    }
+    params = {
+        "key": "GEMINI_API_KEY"
+    }
+    data = {
+        "contents": [{
+            "parts": [{"text": text}]
+        }]
+    }
+
+    response = requests.post(url, headers=headers, params=params, json=data)
+    return response.json()
+
